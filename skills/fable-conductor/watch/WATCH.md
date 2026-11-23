@@ -20,6 +20,8 @@ Run the report, then answer the questions.
 python <skill-dir>/scripts/ledger.py report
 ```
 
+For a rough cost, add `--prices FILE`. It is a blended estimate (the ledger holds one token total per dispatch) from a prices file you supply, in dollars per million tokens per model. `assets/prices.example.json` shows the shape; its numbers are made up, so take real prices from the current pricing page.
+
 - **Is the plan still right?** If two pieces needed rework for the same reason, the cause is upstream (the design or the brief template). Fix that before sending more.
 - **Is anything over-routed or under-routed?** Use the flags in the report. Change the routing for the next wave and note it in `.claude/conductor/lessons.md`.
 - **Is my context bloated?** Signs: you are reading whole files, agents return pages instead of the fixed format, you are re-deriving things already decided. Remedies: tighten the report format, send a scout instead of reading, and at a natural break save state and continue in a fresh session.

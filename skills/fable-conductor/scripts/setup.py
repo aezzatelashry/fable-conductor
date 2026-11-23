@@ -35,6 +35,8 @@ RULES = (
     "on your own and without waiting for a command: the main model plans, briefs, verifies and "
     "integrates; subagents execute.\n"
     "- Ask for the owner's decisions as pick-an-option questions, recommendation first.\n"
+    "- When a session opens with anything other than a concrete task, show the skill's menu as "
+    "pick-an-option choices; end every run with next-step choices.\n"
     "- Project lessons: `.claude/conductor/lessons.md`. Dispatch ledger: `.claude/conductor/ledger.jsonl`.\n"
     "- The rules in this file outrank the skill.\n"
 )
