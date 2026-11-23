@@ -1,9 +1,13 @@
 name: release
 
+# Two ways to cut a release, both from the version in SKILL.md:
+#   - push a tag vX.Y.Z (it must equal that version), or
+#   - press "Run workflow" on main: the tag is created by the release itself.
 on:
   push:
     tags:
       - "v*.*.*"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -39,18 +43,34 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Tag must equal metadata.version
+      - name: Version, and the tag it must equal
+        id: version
         run: |
-          tag="${GITHUB_REF_NAME#v}"
           version=$(sed -n 's/^  version: "\(.*\)"$/\1/p' skills/fable-conductor/SKILL.md | head -n 1)
-          echo "tag=$tag version=$version"
-          if [ -z "$version" ] || [ "$tag" != "$version" ]; then
-            echo "tag $tag does not match metadata.version $version" >&2
+          if [ -z "$version" ]; then
+            echo "no metadata.version in SKILL.md" >&2
             exit 1
           fi
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="${GITHUB_REF_NAME#v}"
+            if [ "$tag" != "$version" ]; then
+              echo "tag $tag does not match metadata.version $version" >&2
+              exit 1
+            fi
+          elif [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "a manual release runs from main only, not $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
       - name: Build archive
         run: python tools/package.py skills/fable-conductor fable-conductor.skill
       - name: Create release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "$GITHUB_REF_NAME" fable-conductor.skill --generate-notes
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists; bump the version in SKILL.md first" >&2
+            exit 1
+          fi
+          gh release create "$TAG" fable-conductor.skill --target "$GITHUB_SHA" --generate-notes
