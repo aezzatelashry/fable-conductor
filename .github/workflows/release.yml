@@ -1,0 +1,56 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install tools
+        run: python -m pip install ruff pytest
+      - name: Lint
+        run: ruff check .
+      - name: Format
+        run: ruff format --check .
+      - name: Validate skill
+        run: python tools/validate.py
+      - name: Privacy check
+        run: python tools/privacy_check.py
+      - name: Tests
+        run: python -m pytest -q
+
+  release:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tag must equal metadata.version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(sed -n 's/^  version: "\(.*\)"$/\1/p' skills/fable-conductor/SKILL.md | head -n 1)
+          echo "tag=$tag version=$version"
+          if [ -z "$version" ] || [ "$tag" != "$version" ]; then
+            echo "tag $tag does not match metadata.version $version" >&2
+            exit 1
+          fi
+      - name: Build archive
+        run: python tools/package.py skills/fable-conductor fable-conductor.skill
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "$GITHUB_REF_NAME" fable-conductor.skill --generate-notes
