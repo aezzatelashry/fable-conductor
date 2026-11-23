@@ -43,6 +43,8 @@ Say what you want in plain language; a command is optional.
 
 That last rule matters. In our measurements with plain requests and no command, the skill started on 3 of 3 requests inside a project whose rules file names it, and on 3 of 10 runs outside any project, where it competed with several hundred other installed skills. Without the rule you may need to name the skill.
 
+A worked example of one small run: [examples/small-feature](examples/small-feature/README.md).
+
 ## What is in the box
 
 ```

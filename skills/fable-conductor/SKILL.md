@@ -2,7 +2,7 @@
 name: fable-conductor
 description: "Default way to run any request that contains two or more substantial pieces of work (أي طلب فيه أكتر من قطعة شغل: ميزة مع إصلاح، مرحلة من الخطة، إعادة هيكلة مع اختبارات، مراجعة مع تنفيذ) - invoke this FIRST, before any brainstorming, planning or coding skill, whether the request is in Arabic or English and without the user naming it or typing a command. The main model plans, briefs, verifies and integrates; Haiku, Sonnet and Opus subagents execute what each is cheapest and best at; spend is tracked in a ledger. Also use for: splitting work across models or agents (وزّع الشغل، قسّم المهام، اشتغل كفريق), reviewing or cutting token cost (صرفنا قد إيه توكن، قلل التكلفة، راجع استهلاك التوكن), preparing a project (setup), auditing installed skills and plugins (audit), and updating this skill (حدّث مهارة المايسترو). Not for a single small edit, a question or an explanation."
 metadata:
-  version: "2.2.0"
+  version: "2.3.0"
 ---
 
 # Fable Conductor
@@ -20,10 +20,15 @@ The project's own rules (`CLAUDE.md`, owner instructions) always win over this s
 
 The user should never have to type a command. The skill starts on its own when a plain-language request (typed or dictated) has more than one substantial piece, and plain phrases select the modes: "show me the plan first", "how much did we spend", "update the conductor skill". Whenever you need a decision from the user, ask with the structured question tool so they pick an option instead of typing; put your recommendation first. After the plan, and at the end of a run, offer the natural next steps the same way (go ahead, change the split, show spend, stop).
 
+The person must be able to tell whether the conductor is running. When this skill starts in a session, open your reply with one short line saying so in their language, with the version from this file's metadata (for example «المايسترو شغّال · 2.3.0» or "Conductor on · 2.3.0"), once per session, not on every message. If they ask whether it is running, answer plainly: yes only if these instructions were loaded in this session; otherwise say no and offer to start it.
+
+People forget phrases, so there is a menu. When a session opens with something that is not a concrete task (a greeting, "continue", something vague), or the person asks what you can do, show the menu in `references/menu.md` as a pick-an-option question instead of waiting for the right words. When the first message is a concrete task, do the task.
+
 The same modes can be called by name for those who prefer it:
 
 | Call | What happens |
 |---|---|
+| `/fable-conductor` or `/fable-conductor menu` | The menu: everything below as choices (`references/menu.md`) |
 | `/fable-conductor <task>` | The full loop below |
 | `/fable-conductor plan <task>` | Stop after step 3: show the split and the routing table, spend nothing on executors, wait for a go-ahead |
 | `/fable-conductor watch` | Run the Watch checkpoint and report spend and quality from the ledger |

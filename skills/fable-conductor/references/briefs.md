@@ -95,6 +95,10 @@ NOT EXAMINED: what you did not look at
 ```
 Reviewers are read-only. Give them the diff range and the spec, one lens each, and never your own opinion of the change.
 
+## Reusing a brief that worked
+
+When a brief for a recurring kind of work in a project (a UI change, an endpoint, a migration) is accepted first time, save it as a template in `.claude/conductor/briefs/<kind>.md` with the task-specific parts replaced by placeholders. It already holds the project's real commands, paths and traps, which is where most brief faults come from. Start from the template next time, and update it when a run shows it was missing something.
+
 ## Small examples
 
 A weak brief: "Fix the import bug in the users module and add tests."

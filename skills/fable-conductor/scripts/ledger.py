@@ -3,17 +3,19 @@
 
   ledger.py add --model sonnet --role builder --tokens 48211 \
       --duration-ms 93000 --outcome pass --task "users import endpoint" [--kind implement]
-  ledger.py report [--last N] [--json] [--file F | --all DIR]
+  ledger.py report [--last N] [--json] [--file F | --all DIR] [--prices FILE]
 
 The ledger lives at <project>/.claude/conductor/ledger.jsonl, where <project> is the
 git root of the current directory (or the current directory). Override with --file
 or CONDUCTOR_LEDGER. It records subagent dispatches only; the conductor's own token
-use is not visible to this script.
+use is not visible to this script. --prices FILE (JSON, model -> dollars per million
+tokens) adds a blended cost estimate to the report.
 """
 
 import argparse
 import datetime as dt
 import json
+import math
 import os
 import subprocess
 import sys
@@ -164,7 +166,36 @@ def by_project(rows):
     ]
 
 
+def load_prices(path):
+    """Model -> dollars per million tokens from a JSON file; ValueError if unusable."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except OSError as e:
+        raise ValueError(f"cannot read prices file {path}: {e.strerror or e}") from e
+    except ValueError as e:
+        raise ValueError(f"prices file {path} is not valid JSON: {e}") from e
+    items = data.items() if isinstance(data, dict) else None
+    if items is None:
+        raise ValueError(f"prices file {path} must be a JSON object of model: dollars per million tokens")
+    prices = {}
+    for key, value in items:
+        if key.startswith("_"):
+            continue
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool)
+        if not ok or not math.isfinite(value) or value < 0:
+            raise ValueError(f"price for '{key}' in {path} must be a non-negative number, got {value!r}")
+        prices[key.lower()] = value
+    return prices
+
+
 def cmd_report(a):
+    prices = None
+    if a.prices:
+        try:
+            prices = load_prices(a.prices)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 2
     projects = None
     if a.all:
         base = Path(a.all)
@@ -192,6 +223,13 @@ def cmd_report(a):
         t["tokens"] += int(r.get("tokens") or 0)
     total_tokens = sum(t["tokens"] for t in by_tier.values())
     passed = sum(1 for r in rows if r.get("outcome") == "pass")
+    if prices is not None:
+        unpriced = sorted(m for m in by_tier if m not in prices)
+        total_cost = 0.0
+        for m, t in by_tier.items():
+            raw = t["tokens"] * prices.get(m, 0) / 1_000_000
+            total_cost += raw
+            t["cost"] = round(raw, 4)
 
     if a.json:
         out = {
@@ -208,11 +246,18 @@ def cmd_report(a):
         }
         if projects is not None:
             out["by_project"] = projects
+        if prices is not None:
+            out["estimated_cost"] = round(total_cost, 4)
+            out["unpriced_models"] = unpriced
         print(json.dumps(out, ensure_ascii=False, indent=2))
         return
 
     print(f"ledger: {path}")
     print(f"dispatches: {len(rows)}   subagent tokens: {total_tokens:,}   first-time pass: {passed}/{len(rows)}")
+    if prices is not None:
+        print(f"estimated cost: ${total_cost:.2f}")
+        if unpriced:
+            print(f"unpriced: {', '.join(unpriced)}")
     if bad:
         print(f"warning: {bad} unreadable line(s) skipped")
     if projects is not None:
@@ -260,6 +305,11 @@ def main():
     rep = sub.add_parser("report", help="summarise the ledger and print routing flags")
     rep.add_argument("--last", type=int, default=0, help="only the last N dispatches")
     rep.add_argument("--json", action="store_true")
+    rep.add_argument(
+        "--prices",
+        metavar="FILE",
+        help="JSON of model: dollars per million tokens, for a blended cost",
+    )
     grp = rep.add_mutually_exclusive_group()
     grp.add_argument("--file")
     grp.add_argument(

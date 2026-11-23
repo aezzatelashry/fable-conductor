@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.3.0 (2026-11-23)
+
+- **Menu.** When a session opens with something other than a concrete task, or the person asks what the skill can do, the conductor shows its modes as pick-an-option choices (`references/menu.md`), and it ends every run with next-step choices. Tried headless with two vague openings and one concrete task: the vague ones went to the menu file and looked for the question tool, the concrete one went straight to the task; the menu was not seen rendered, because the question tool is not available in a headless run.
+- **A visible start line.** The conductor says once per session that it is running, with its version, and answers plainly when asked whether it is.
+- **Cost estimate.** `ledger.py report --prices FILE` adds a blended cost estimate: FILE maps a model name to dollars per million tokens. The ledger keeps one total token count per dispatch, so input and output are not priced separately. Output gains `estimated_cost`, `unpriced_models` and a `cost` per tier (JSON), or an `estimated cost:` line and an `unpriced:` line (text). Without `--prices` the output is unchanged. A prices file that is missing, not JSON, not an object, or holds a non-number exits 2; keys starting with `_` are ignored. `assets/prices.example.json` shows the shape with made-up numbers; no real prices are shipped. Not verified: the estimate against a real bill.
+- **Brief templates per project** (`references/briefs.md`): a brief that was accepted first time is saved for reuse.
+- `setup.py --rules` now also asks for the menu at session start.
+- **Measured, once.** The cost-estimate change, an issue template and a worked example were built twice from identical copies in headless sessions: by the main model alone, and by the main model using this skill with Sonnet and Haiku executors. Both results passed the same 27 acceptance checks, written beforehand. Whole-session cost as reported by the CLI: 3.19 dollars alone, 2.81 with the skill (12% less); wall time 238 s and 201 s. In the skill's run the main model was still 81% of the cost, most of it reading the session's own context. One run per arm on one task: an indication, not a rate.
+
 ## 2.2.0 (2026-11-23)
 
 - Owner profile: `references/owner.md` (stable, ships empty) and `.claude/conductor/owner.md` per project (learned since the last packaging). The conductor reads both at the start, records corrections and standing preferences as dated lines, and shows or edits them on request (`profile` mode). A profile is folded into the owner's own package during `evolve` and is never published.
