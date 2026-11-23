@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.1 (2026-11-23)
+
+- The ledger dashboard can be live: fed from rows in its own store, which the conductor writes as it logs each dispatch, with filters and sorting on the page (`references/modes.md`). Owner feedback: a dashboard that does not update and has no controls reads as broken. Built once this way; its page check had not reported when this was written.
+
 ## 2.3.0 (2026-11-23)
 
 - **Menu.** When a session opens with something other than a concrete task, or the person asks what the skill can do, the conductor shows its modes as pick-an-option choices (`references/menu.md`), and it ends every run with next-step choices. Tried headless with two vague openings and one concrete task: the vague ones went to the menu file and looked for the question tool, the concrete one went straight to the task; the menu was not seen rendered, because the question tool is not available in a headless run.

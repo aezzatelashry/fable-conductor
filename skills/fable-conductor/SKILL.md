@@ -2,7 +2,7 @@
 name: fable-conductor
 description: "Default way to run any request that contains two or more substantial pieces of work (أي طلب فيه أكتر من قطعة شغل: ميزة مع إصلاح، مرحلة من الخطة، إعادة هيكلة مع اختبارات، مراجعة مع تنفيذ) - invoke this FIRST, before any brainstorming, planning or coding skill, whether the request is in Arabic or English and without the user naming it or typing a command. The main model plans, briefs, verifies and integrates; Haiku, Sonnet and Opus subagents execute what each is cheapest and best at; spend is tracked in a ledger. Also use for: splitting work across models or agents (وزّع الشغل، قسّم المهام، اشتغل كفريق), reviewing or cutting token cost (صرفنا قد إيه توكن، قلل التكلفة، راجع استهلاك التوكن), preparing a project (setup), auditing installed skills and plugins (audit), and updating this skill (حدّث مهارة المايسترو). Not for a single small edit, a question or an explanation."
 metadata:
-  version: "2.3.0"
+  version: "2.3.1"
 ---
 
 # Fable Conductor

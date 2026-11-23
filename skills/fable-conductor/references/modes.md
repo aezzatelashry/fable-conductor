@@ -32,6 +32,10 @@ The inventory counts what is on disk. Whether the app loads each description in 
 1. `python <skill-dir>/scripts/ledger.py report --json` (add `--all <dir>` for several projects).
 2. Build a single-page dashboard from that JSON with the session's artifact tooling (follow its own design guidance; start from its dashboard type if it offers one): tokens by tier, first-time pass rate, the tier-and-kind table, the flags, and the latest rows. Add the last lines of `lessons.md`. Where the dashboard type takes an uploaded data file, export the `rows` as CSV and let the page compute the totals from it, so every figure traces to a row. To refresh an existing dashboard, replace its data file rather than building a new page.
 3. State on the page that the conductor's own token use is not included, and the time the data was generated.
+
+   **Keeping it live.** A page fed by an uploaded file shows the day it was made. Where the dashboard type can read rows saved in its own store, use that as the source instead, and record the dashboard's address in `.claude/conductor/dashboard.md`. From then on, whenever you log a dispatch with `ledger.py add` and that file exists, also write the same row to the dashboard's store (one small write, in the same shape as the ledger line). The page then updates as work happens. Viewing a live page costs no model tokens: the reader's browser reads the store. The only cost is that one write per dispatch, made by a session that was running anyway. A session without the store tool skips the write and says so; the next session that has it copies over the ledger lines the store lacks.
+
+   Give the page controls a reader expects: filters for project, model and outcome that the totals follow, a way to clear them, and sorting on the table.
 4. Artifacts are private by default. Do not publish a dashboard for a project the user has called sensitive without asking.
 
 If no artifact tooling is available, print the text report instead and say so.
