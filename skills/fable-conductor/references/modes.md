@@ -6,6 +6,8 @@ Read the section for the mode you are running. Each mode changes things outside 
 
 Makes routing deterministic in one project and records how its checks run, so later runs do not rediscover it.
 
+0. **Hooks are what make the conductor visible and the ledger live**, so offer them first: `setup.py apply --hooks` (add `--rules` for the project's rules file). It copies the hook scripts and `ledger.py` into `.claude/conductor/` and merges four entries into `.claude/settings.json`: a session-start banner (installed, version, counts), a line each time a subagent finishes, automatic ledger rows, and a once-per-batch reminder to rate and to sync the dashboard. It never removes anything already in that file, and refuses if the file is not valid JSON. `--update-hooks` refreshes the scripts after a new skill version. Checked on 2026-11-24 in a real headless session: the session-start, subagent-stop and stop hooks all ran, a row was logged with the right model and usage, and the reminder fired once. Not checked: that the desktop app and the web app show the banner and the per-agent line to the person (the harness emits them as user messages, and the docs say the user sees them), that the status line shows anywhere but the terminal (the docs do not say), and Windows (the command tries `python3`, then `python`).
+
 1. Show what would change: `python <skill-dir>/scripts/setup.py plan`. It installs the four pinned agents from `assets/agents/` into `.claude/agents/` and creates `.claude/conductor/lessons.md`. It never overwrites: an existing agent file with different content is kept and reported.
 2. Ask the user to confirm (one question, options: install with the rules line / install without it / not now). On yes: `setup.py apply`, with `--rules` if they chose it.
 
