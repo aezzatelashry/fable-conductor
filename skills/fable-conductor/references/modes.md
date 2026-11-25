@@ -6,6 +6,8 @@ Read the section for the mode you are running. Each mode changes things outside 
 
 Makes routing deterministic in one project and records how its checks run, so later runs do not rediscover it.
 
+0. **Hooks are what make the conductor visible and the ledger live**, so offer them first: `setup.py apply --hooks` (add `--rules` for the project's rules file). It copies the hook scripts and `ledger.py` into `.claude/conductor/` and merges four entries into `.claude/settings.json`: a session-start banner (installed, version, counts), a line each time a subagent finishes, automatic ledger rows, and a once-per-batch reminder to rate and to sync the dashboard. It never removes anything already in that file, and refuses if the file is not valid JSON. `--update-hooks` refreshes the scripts after a new skill version. Checked on 2026-11-24 in a real headless session: the session-start, subagent-stop and stop hooks all ran, a row was logged with the right model and usage, and the reminder fired once. Not checked: that the desktop app and the web app show the banner and the per-agent line to the person (the harness emits them as user messages, and the docs say the user sees them), that the status line shows anywhere but the terminal (the docs do not say), and Windows (the command tries `python3`, then `python`).
+
 1. Show what would change: `python <skill-dir>/scripts/setup.py plan`. It installs the four pinned agents from `assets/agents/` into `.claude/agents/` and creates `.claude/conductor/lessons.md`. It never overwrites: an existing agent file with different content is kept and reported.
 2. Ask the user to confirm (one question, options: install with the rules line / install without it / not now). On yes: `setup.py apply`, with `--rules` if they chose it.
 
@@ -32,6 +34,10 @@ The inventory counts what is on disk. Whether the app loads each description in 
 1. `python <skill-dir>/scripts/ledger.py report --json` (add `--all <dir>` for several projects).
 2. Build a single-page dashboard from that JSON with the session's artifact tooling (follow its own design guidance; start from its dashboard type if it offers one): tokens by tier, first-time pass rate, the tier-and-kind table, the flags, and the latest rows. Add the last lines of `lessons.md`. Where the dashboard type takes an uploaded data file, export the `rows` as CSV and let the page compute the totals from it, so every figure traces to a row. To refresh an existing dashboard, replace its data file rather than building a new page.
 3. State on the page that the conductor's own token use is not included, and the time the data was generated.
+
+   **Keeping it live.** A page fed by an uploaded file shows the day it was made. Where the dashboard type can read rows saved in its own store, use that as the source instead, and record the dashboard's address in `.claude/conductor/dashboard.md`. From then on, whenever you log a dispatch with `ledger.py add` and that file exists, also write the same row to the dashboard's store (one small write, in the same shape as the ledger line). The page then updates as work happens. Viewing a live page costs no model tokens: the reader's browser reads the store. The only cost is that one write per dispatch, made by a session that was running anyway. A session without the store tool skips the write and says so; the next session that has it copies over the ledger lines the store lacks.
+
+   Give the page controls a reader expects: filters for project, model and outcome that the totals follow, a way to clear them, and sorting on the table.
 4. Artifacts are private by default. Do not publish a dashboard for a project the user has called sensitive without asking.
 
 If no artifact tooling is available, print the text report instead and say so.

@@ -2,7 +2,7 @@
 name: fable-conductor
 description: "Default way to run any request that contains two or more substantial pieces of work (أي طلب فيه أكتر من قطعة شغل: ميزة مع إصلاح، مرحلة من الخطة، إعادة هيكلة مع اختبارات، مراجعة مع تنفيذ) - invoke this FIRST, before any brainstorming, planning or coding skill, whether the request is in Arabic or English and without the user naming it or typing a command. The main model plans, briefs, verifies and integrates; Haiku, Sonnet and Opus subagents execute what each is cheapest and best at; spend is tracked in a ledger. Also use for: splitting work across models or agents (وزّع الشغل، قسّم المهام، اشتغل كفريق), reviewing or cutting token cost (صرفنا قد إيه توكن، قلل التكلفة، راجع استهلاك التوكن), preparing a project (setup), auditing installed skills and plugins (audit), and updating this skill (حدّث مهارة المايسترو). Not for a single small edit, a question or an explanation."
 metadata:
-  version: "2.3.0"
+  version: "2.4.0"
 ---
 
 # Fable Conductor
@@ -20,7 +20,7 @@ The project's own rules (`CLAUDE.md`, owner instructions) always win over this s
 
 The user should never have to type a command. The skill starts on its own when a plain-language request (typed or dictated) has more than one substantial piece, and plain phrases select the modes: "show me the plan first", "how much did we spend", "update the conductor skill". Whenever you need a decision from the user, ask with the structured question tool so they pick an option instead of typing; put your recommendation first. After the plan, and at the end of a run, offer the natural next steps the same way (go ahead, change the split, show spend, stop).
 
-The person must be able to tell whether the conductor is running. When this skill starts in a session, open your reply with one short line saying so in their language, with the version from this file's metadata (for example «المايسترو شغّال · 2.3.0» or "Conductor on · 2.3.0"), once per session, not on every message. If they ask whether it is running, answer plainly: yes only if these instructions were loaded in this session; otherwise say no and offer to start it.
+The person must be able to tell whether the conductor is running, and that cannot depend on you remembering to say so. In a project prepared with `setup --hooks`, the harness does it: a session-start hook prints «المايسترو شغّال هنا» with the version and the ledger counts, and a hook prints one line each time a subagent finishes, with its model, role, new tokens and cache reads. So do not print a start line of your own there. Elsewhere (no hooks installed), open your first reply with one short line in their language saying the conductor is on, with the version from this file's metadata. If they ask whether it is running, answer from evidence, not memory: hook lines in the conversation, or rows in `.claude/conductor/ledger.jsonl` dated today. Without evidence, say you cannot confirm it and offer to run `setup --hooks`.
 
 People forget phrases, so there is a menu. When a session opens with something that is not a concrete task (a greeting, "continue", something vague), or the person asks what you can do, show the menu in `references/menu.md` as a pick-an-option question instead of waiting for the right words. When the first message is a concrete task, do the task.
 
@@ -109,14 +109,25 @@ Merge piece by piece, never anything whose checks failed. Run the project's full
 
 ### 9. Record
 
-Log each dispatch (one agent sent on one piece: scout, builder, reviewer or runner) and close the run: this is what lets the skill improve instead of repeating mistakes. The ledger is written to `.claude/conductor/ledger.jsonl` under the project's git root.
+The ledger (`.claude/conductor/ledger.jsonl`) is what lets the skill improve instead of repeating mistakes. Who writes it depends on the project:
 
-```bash
-python <skill-dir>/scripts/ledger.py add --model sonnet --role builder \
-  --tokens 48211 --duration-ms 93000 --outcome pass --task "users import endpoint"
-```
+- **Hooks installed** (`.claude/conductor/hooks/` exists): a hook logs every subagent run by itself, from the agent's own transcript, with its real model and usage split into input, output, cache writes and cache reads. The row starts as `unrated`. Your only job is the judgement a hook cannot make: when you have verified a piece, rate it.
 
-`--outcome` is `pass` (accepted first time), `rework` (accepted after correction), `escalated` (moved up a tier) or `fail`. Token and duration figures come from the agent's completion notification; record them when it arrives, as they are not stored anywhere else. If a lesson is specific and durable ("Haiku misreports this suite's skipped count; use Sonnet as runner here"), add one line to `.claude/conductor/lessons.md`. If the person corrected how you worked or stated a standing preference, add one line to `.claude/conductor/owner.md` as `references/owner.md` describes: lessons are about the work, the profile is about the person.
+  ```bash
+  python3 .claude/conductor/ledger.py rate --agent-id <id> --outcome pass
+  ```
+
+  `pass` = accepted first time, `rework` = accepted after correction, `escalated` = moved up a tier, `fail`. `ledger.py unrated` lists what is waiting. A hook also reminds you once per batch when rows are unrated. Never also `add` the same run by hand: it would count twice.
+- **No hooks**: log each dispatch yourself, as before.
+
+  ```bash
+  python3 <skill-dir>/scripts/ledger.py add --model sonnet --role builder \
+    --tokens 48211 --duration-ms 93000 --outcome pass --task "users import endpoint"
+  ```
+
+  The token figure in a completion notice is only the size of the agent's last request, not its whole work, so a hand-logged row understates spend. Say so when you report from such a ledger.
+
+If the project has a dashboard (`.claude/conductor/dashboard.md`), the reminder hook also asks you to run `python3 .claude/conductor/ledger.py export-store` and write what it prints to the dashboard store; a hook cannot write to it. If a lesson is specific and durable ("Haiku misreports this suite's skipped count; use Sonnet as runner here"), add one line to `.claude/conductor/lessons.md`. If the person corrected how you worked or stated a standing preference, add one line to `.claude/conductor/owner.md` as `references/owner.md` describes: lessons are about the work, the profile is about the person.
 
 ## Watch (the internal monitor)
 

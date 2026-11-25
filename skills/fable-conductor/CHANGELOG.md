@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.4.0 (2026-11-24)
+
+Owner report: the ledger was not live, nothing showed that a chat was using the conductor, nothing showed model usage, "it works by luck". A three-member review (facts from disk, official documentation, an audit of the skill's own promises) found:
+
+- **Everything depended on the model remembering.** No hook and no status line existed on the machine. Every promise (start line, menu, logging, dashboard, owner profile) was an instruction the model could skip, and none had been run end to end. The start line was also useless as evidence: when the skill does not start, nothing is printed, which looks the same as forgetting to print.
+- **The ledger's token figure was misleading.** The number in a completion notice is the size of the agent's last request only. Against five real agent transcripts it matched exactly, while the run's real work (summed per message) was several times larger. Dashboards titled it spend. A Haiku scout was logged as 0 and was 95,627 at its last request.
+
+Changes:
+
+- **Hooks, run by the harness** (`scripts/hooks/`, installed by `setup.py --hooks`): a session-start banner with version and counts; a line when each subagent finishes; an automatic ledger row from the subagent's own transcript (model from the transcript, usage split into input, output, cache writes and cache reads, deduplicated by message id); a once-per-batch reminder to rate rows and sync the dashboard; a status line for the terminal. The session-start hook also injects the owner profile and the latest lessons, so reading them no longer depends on the model.
+- **Ledger v2**: rows carry `agent_id`, `source`, the four usage fields, `final_context_tokens`, `messages`; new outcome `unrated` (excluded from pass rates and flags); `rate`, `unrated` and `export-store` subcommands; `--prices` accepts per-category prices.
+- The skill now says where a figure comes from, and that a hand-logged notice figure understates spend.
+- **Tested in a real headless session**: the session-start, subagent-stop and stop hooks ran, one Haiku run produced a correct row, the reminder fired once. 44 unit tests. **Not tested**: how the desktop and web apps display the hook messages, the status line outside the terminal, Windows, and `export-store` against a real dashboard store.
+- Not fixable by code: deciding that a request has two or more pieces, and judging an outcome. Those stay with the model.
+
+## 2.3.1 (2026-11-23)
+
+- The ledger dashboard can be live: fed from rows in its own store, which the conductor writes as it logs each dispatch, with filters and sorting on the page (`references/modes.md`). Owner feedback: a dashboard that does not update and has no controls reads as broken. Built once this way; its page check had not reported when this was written.
+
 ## 2.3.0 (2026-11-23)
 
 - **Menu.** When a session opens with something other than a concrete task, or the person asks what the skill can do, the conductor shows its modes as pick-an-option choices (`references/menu.md`), and it ends every run with next-step choices. Tried headless with two vague openings and one concrete task: the vague ones went to the menu file and looked for the question tool, the concrete one went straight to the task; the menu was not seen rendered, because the question tool is not available in a headless run.

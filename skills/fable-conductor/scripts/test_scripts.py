@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -274,3 +275,240 @@ def test_example_prices_file_loads(tmp_path):
     data = json.loads(run(LEDGER, "report", "--json", "--file", f, "--prices", example).stdout)
     assert data["by_tier"]["haiku"]["cost"] == 1.5
     assert data["unpriced_models"] == ["alpha", "zeta"]
+
+
+# ---- unrated rows, rate, export-store, category prices ----
+
+
+def raw_row(n, outcome="unrated", model="sonnet", **extra):
+    row = {
+        "ts": f"2026-11-24T10:00:{n:02d}+00:00",
+        "model": model,
+        "role": "builder",
+        "kind": "builder",
+        "tokens": 100,
+        "duration_ms": 5,
+        "outcome": outcome,
+        "task": f"task {n}",
+        "agent_id": f"ag{n}",
+        **extra,
+    }
+    return json.dumps(row, ensure_ascii=False)
+
+
+def write_ledger(tmp_path, lines):
+    f = tmp_path / "p" / ".claude" / "conductor" / "ledger.jsonl"
+    f.parent.mkdir(parents=True)
+    f.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))
+    return f
+
+
+def test_add_new_fields(tmp_path):
+    f = tmp_path / "l.jsonl"
+    r = run(
+        LEDGER, "add", "--model", "opus", "--role", "builder", "--outcome", "unrated",
+        "--task", "t", "--agent-id", "x9", "--source", "hook",
+        "--input-tokens", 1, "--output-tokens", 2, "--cache-write-tokens", 3,
+        "--cache-read-tokens", 4, "--final-context-tokens", 5, "--messages", 6,
+        "--file", f,
+    )  # fmt: skip
+    assert r.returncode == 0, r.stderr
+    row = json.loads(f.read_text(encoding="utf-8"))
+    assert row["agent_id"] == "x9" and row["source"] == "hook" and row["messages"] == 6
+    assert row["cache_read_tokens"] == 4 and row["outcome"] == "unrated"
+
+
+def test_rate_changes_only_unrated_and_preserves_bytes(tmp_path):
+    lines = [
+        raw_row(1, "pass"),
+        "not json at all",
+        raw_row(2),
+        "",
+        raw_row(3),
+        raw_row(4, "fail"),
+    ]
+    f = write_ledger(tmp_path, lines)
+    before = f.read_bytes().split(b"\n")
+    r = run(LEDGER, "rate", "--agent-id", "ag2", "--outcome", "rework", "--file", f)
+    assert r.returncode == 0 and "1 row(s) changed" in r.stdout
+    after = f.read_bytes().split(b"\n")
+    assert [i for i in range(len(before)) if before[i] != after[i]] == [2]
+    assert json.loads(after[2])["outcome"] == "rework"
+    r = run(LEDGER, "rate", "--agent-id", "ag2", "--outcome", "pass", "--file", f)
+    assert "already rated" in r.stdout and "0 row(s) changed" in r.stdout
+    assert json.loads(f.read_bytes().split(b"\n")[2])["outcome"] == "rework"
+    r = run(LEDGER, "rate", "--last", 3, "--outcome", "escalated", "--file", f)
+    assert "1 row(s) changed" in r.stdout and "already rated" in r.stdout
+    assert json.loads(f.read_bytes().split(b"\n")[4])["outcome"] == "escalated"
+    r = run(LEDGER, "rate", "--agent-id", "nobody", "--outcome", "pass", "--file", f)
+    assert r.returncode == 0 and "nothing matched" in r.stdout
+
+
+def test_unrated_listing(tmp_path):
+    f = write_ledger(tmp_path, [raw_row(1, "pass"), raw_row(2), raw_row(3)])
+    before = f.read_bytes()
+    r = run(LEDGER, "unrated", "--file", f)
+    out = r.stdout.splitlines()
+    assert len(out) == 2 and out[0].startswith("2 ") and "ag2" in out[0]
+    assert "task 3" in out[1] and f.read_bytes() == before
+
+
+def test_export_store_batches_and_marker(tmp_path):
+    f = write_ledger(tmp_path, [raw_row(i % 60, source="hook") for i in range(120)])
+    r = run(LEDGER, "export-store", "--file", f)
+    batches = [json.loads(x) for x in r.stdout.splitlines()]
+    assert [len(b) for b in batches] == [50, 50, 20]
+    first = batches[0][0]
+    assert first["op"] == "set" and first["collection"] == "data/conductor/dispatches"
+    assert first["doc_id"] == "20261124T100000-001"
+    assert first["data"]["project"] == "p" and first["data"]["source"] == "hook"
+    assert "exported 120" in r.stderr
+    state = f.parent / "state.json"
+    assert json.loads(state.read_text())["synced_lines"] == 120
+    assert run(LEDGER, "export-store", "--file", f).stdout == ""
+    with f.open("a", encoding="utf-8") as fh:
+        fh.write(raw_row(7) + "\n")
+    state.write_text(json.dumps({"synced_lines": 120, "other": 1}))
+    out = json.loads(run(LEDGER, "export-store", "--file", f).stdout)
+    assert len(out) == 1 and out[0]["doc_id"].endswith("-121")
+    assert json.loads(state.read_text()) == {"synced_lines": 121, "other": 1}
+    r = run(LEDGER, "export-store", "--all", "--file", f)
+    assert [len(json.loads(x)) for x in r.stdout.splitlines()] == [50, 50, 21]
+
+
+def test_report_with_unrated(tmp_path):
+    f = write_ledger(tmp_path, [raw_row(1, "pass"), raw_row(2, "fail"), raw_row(3)])
+    r = run(LEDGER, "report", "--file", f)
+    assert "unrated: 1" in r.stdout and "first-time pass: 1/2" in r.stdout
+    assert r.stdout.index("dispatches: 3") < r.stdout.index("unrated: 1")
+    j = json.loads(run(LEDGER, "report", "--json", "--file", f).stdout)
+    assert j["unrated"] == 1 and j["first_pass_rate"] == 0.5 and j["dispatches"] == 3
+    assert j["total_tokens"] == 300
+    g = write_ledger(tmp_path / "x", [raw_row(1, "pass")])
+    assert "unrated:" not in run(LEDGER, "report", "--file", g).stdout
+    assert "unrated" not in json.loads(run(LEDGER, "report", "--json", "--file", g).stdout)
+
+
+def test_prices_object_and_numeric(tmp_path):
+    cat = {
+        "input_tokens": 1_000_000,
+        "output_tokens": 1_000_000,
+        "cache_write_tokens": 1_000_000,
+        "cache_read_tokens": 1_000_000,
+    }
+    f = write_ledger(
+        tmp_path,
+        [
+            raw_row(1, "pass", model="opus", **cat),
+            raw_row(2, "pass", model="opus"),
+            raw_row(3, "pass", model="haiku", tokens=2_000_000),
+        ],
+    )
+    prices = tmp_path / "prices.json"
+    prices.write_text(
+        json.dumps(
+            {
+                "opus": {"input": 1, "output": 2, "cache_write": 3, "cache_read": 0.5},
+                "haiku": 1.5,
+            }
+        )
+    )
+    j = json.loads(run(LEDGER, "report", "--json", "--prices", prices, "--file", f).stdout)
+    assert j["unpriced_rows"] == 1
+    assert j["by_tier"]["opus"]["cost"] == 6.5
+    assert j["by_tier"]["haiku"]["cost"] == 3.0 + 0 and j["estimated_cost"] == 9.5
+    t = run(LEDGER, "report", "--prices", prices, "--file", f).stdout
+    assert "unpriced rows: 1" in t and "estimated cost: $9.50" in t
+    prices.write_text('{"opus": {"bogus": 1}}')
+    assert run(LEDGER, "report", "--prices", prices, "--file", f).returncode == 2
+    plain = tmp_path / "plain.json"
+    plain.write_text('{"haiku": 1.5, "opus": 5}')
+    j = json.loads(run(LEDGER, "report", "--json", "--prices", plain, "--file", f).stdout)
+    assert "unpriced_rows" not in j and j["by_tier"]["haiku"]["cost"] == 3.0
+
+
+# ---- setup --hooks ----
+
+
+def settings_of(project):
+    return json.loads((project / ".claude" / "settings.json").read_text(encoding="utf-8"))
+
+
+def test_setup_hooks_plan_changes_nothing(tmp_path):
+    r = run(SETUP, "plan", "--project", tmp_path, "--hooks")
+    assert r.returncode == 0 and "would: installed" in r.stdout
+    assert list(tmp_path.rglob("*")) == []
+
+
+def test_setup_hooks_apply_idempotent(tmp_path):
+    r = run(SETUP, "apply", "--project", tmp_path, "--hooks")
+    assert r.returncode == 0, r.stderr
+    c = tmp_path / ".claude" / "conductor"
+    for name in (
+        "session_start",
+        "subagent_stop",
+        "stop_nudge",
+        "statusline",
+        "hooklib",
+    ):
+        assert (c / "hooks" / f"{name}.py").is_file()
+    assert (c / "ledger.py").is_file()
+    skill_md = (Path(__file__).resolve().parent.parent / "SKILL.md").read_text(encoding="utf-8")
+    version = re.search(r'^\s+version:\s*"([^"]+)"', skill_md, re.MULTILINE).group(1)
+    assert (c / "hooks" / "VERSION").read_text().strip() == version
+    s = settings_of(tmp_path)
+    for event, name in (
+        ("SessionStart", "session_start"),
+        ("SubagentStop", "subagent_stop"),
+        ("Stop", "stop_nudge"),
+    ):
+        (entry,) = s["hooks"][event]
+        (h,) = entry["hooks"]
+        assert h["type"] == "command" and h["timeout"] == 10
+        assert h["command"].startswith(f'python3 "$CLAUDE_PROJECT_DIR/.claude/conductor/hooks/{name}.py" || python ')
+    assert "statusline.py" in s["statusLine"]["command"]
+    text = (tmp_path / ".claude" / "settings.json").read_text(encoding="utf-8")
+    assert text.endswith("}\n") and '\n  "hooks"' in text
+    r2 = run(SETUP, "apply", "--project", tmp_path, "--hooks")
+    assert "summary: 0 installed" in r2.stdout and "0 kept existing" in r2.stdout
+    assert settings_of(tmp_path) == s
+
+
+def test_setup_hooks_keeps_foreign_settings(tmp_path):
+    (tmp_path / ".claude").mkdir()
+    mine = {
+        "model": "x",
+        "statusLine": {"type": "command", "command": "echo hi"},
+        "hooks": {
+            "Stop": [{"hooks": [{"type": "command", "command": "other.sh"}]}],
+            "PreToolUse": [{"matcher": "Bash", "hooks": []}],
+        },
+    }
+    (tmp_path / ".claude" / "settings.json").write_text(json.dumps(mine))
+    assert run(SETUP, "apply", "--project", tmp_path, "--hooks").returncode == 0
+    s = settings_of(tmp_path)
+    assert s["statusLine"] == mine["statusLine"] and s["model"] == "x"
+    assert s["hooks"]["PreToolUse"] == mine["hooks"]["PreToolUse"]
+    assert s["hooks"]["Stop"][0] == mine["hooks"]["Stop"][0]
+    assert len(s["hooks"]["Stop"]) == 2
+
+
+def test_setup_hooks_invalid_settings(tmp_path):
+    (tmp_path / ".claude").mkdir()
+    bad = tmp_path / ".claude" / "settings.json"
+    bad.write_text("{oops")
+    r = run(SETUP, "apply", "--project", tmp_path, "--hooks")
+    assert r.returncode == 2 and "not valid JSON" in r.stderr
+    assert bad.read_text() == "{oops"
+    assert [p for p in tmp_path.rglob("*") if p.is_file()] == [bad]
+
+
+def test_setup_update_hooks_overwrites(tmp_path):
+    run(SETUP, "apply", "--project", tmp_path, "--hooks")
+    hook = tmp_path / ".claude" / "conductor" / "hooks" / "stop_nudge.py"
+    original = hook.read_bytes()
+    hook.write_text("# edited\n")
+    r = run(SETUP, "apply", "--project", tmp_path, "--hooks")
+    assert "kept existing (differs)" in r.stdout and hook.read_text() == "# edited\n"
+    r = run(SETUP, "apply", "--project", tmp_path, "--update-hooks")
+    assert r.returncode == 0 and hook.read_bytes() == original
